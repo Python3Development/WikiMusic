@@ -1,5 +1,10 @@
 import os
+from PyQt5 import QtGui
+
 from PyQt5 import QtWidgets, QtCore
+
+from wikimusic import dialog
+from wikimusic import network
 from wikimusic import util
 
 
@@ -16,12 +21,14 @@ class MetaMusicListView(QtWidgets.QScrollArea):
         parent.setSizePolicy(QtWidgets.QSizePolicy.Fixed, QtWidgets.QSizePolicy.Fixed)
         self.setWidget(parent)
         self.list = QtWidgets.QVBoxLayout(parent)
+
     # endregion
 
     # region Properties
     @property
     def selection(self):
         return [item for item in self.items if item.checked]
+
     # endregion
 
     # region Methods
@@ -35,6 +42,7 @@ class MetaMusicListView(QtWidgets.QScrollArea):
     def clear(self):
         self.items.clear()
         self.__layout()
+
     # endregion
 
     # region Helpers
@@ -43,6 +51,7 @@ class MetaMusicListView(QtWidgets.QScrollArea):
         line.setFrameShape(QtWidgets.QFrame.HLine)
         line.setFrameShadow(QtWidgets.QFrame.Sunken)
         self.list.addWidget(line)
+
     # endregion
     pass
 
@@ -86,6 +95,8 @@ class MetaMusicListItem(QtWidgets.QWidget):
         self.cover_label = QtWidgets.QLabel(self)
         self.cover_label.setFixedSize(80, 80)
         self.cover_label.setScaledContents(True)
+        self.cover_label.setContextMenuPolicy(QtCore.Qt.CustomContextMenu)
+        self.cover_label.customContextMenuRequested.connect(self.__handle_cover_context_menu)
         grid_layout.addWidget(self.cover_label, 0, 0, 3, 1)
 
         # Info
@@ -140,6 +151,7 @@ class MetaMusicListItem(QtWidgets.QWidget):
                 if len(artist_title) > 1:
                     self.__model.title = artist_title[1]
                     self.title_input.setText(self.__model.title)
+
     # endregion
 
     # region Properties
@@ -155,6 +167,7 @@ class MetaMusicListItem(QtWidgets.QWidget):
     @property
     def checked(self):
         return self.checkbox_file.isChecked()
+
     # endregion
 
     # region Methods
@@ -165,24 +178,45 @@ class MetaMusicListItem(QtWidgets.QWidget):
     # region Helper
     def __populate(self):
         if self.__model:
-            if self.__model.cover:
-                self.cover_label.setPixmap(util.byte_image(self.__model.cover.data))
-                self.cover_label.setToolTip('<img src="data:image/png;base64,{}">'
-                                            .format(util.base64_byte_image(self.__model.cover.data)))
-            else:
-                self.cover_label.setPixmap(util.image('cover.png'))
-
+            self.__load_cover(self.__model.cover)
             self.artist_input.setText(self.__model.artist)
             self.title_input.setText(self.__model.title)
             self.genre_input.setText(', '.join(self.__model.genres) if self.__model.genres else None)
             self.year_input.setText(self.__model.release)
 
+    def __load_cover(self, cover):
+        if cover:
+            self.cover_label.setPixmap(util.byte_image(self.__model.cover.data))
+            self.cover_label.setToolTip('<img src="data:image/png;base64,{}">'
+                                        .format(util.base64_byte_image(self.__model.cover.data)))
+        else:
+            self.cover_label.setPixmap(util.image('cover.png'))
+
     def __default_line_edit(self, line_edit, value):
         line_edit.setPlaceholderText(value)
         line_edit.setToolTip(value)
+
     # endregion
 
     # region Handlers
+    def __handle_cover_context_menu(self, point):
+        menu = QtWidgets.QMenu()
+        menu.addAction('Set', self.__handle_show_input_popup)
+        if self.__model.cover:
+            menu.addAction('Clear', self.__handle_clear_cover)
+        menu.exec_(self.mapToGlobal(point))
+
+    def __handle_show_input_popup(self):
+        d = dialog.UrlImageDialog()
+        if d.exec_():
+            if d.cover:
+                self.__model.cover = d.cover
+                self.__load_cover(d.cover)
+
+    def __handle_clear_cover(self):
+        self.__model.cover = None
+        self.__load_cover(None)
+
     def __handle_checkbox_state_change(self, state):
         self.frame.setHidden(state == QtCore.Qt.Unchecked)
 

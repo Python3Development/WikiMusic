@@ -22,7 +22,6 @@ class Window(QtWidgets.QMainWindow):
     # region Setup
     def __setup(self):
         self.tasks = 0
-        self.collected = False
         self.is_running = False
         self.start = None
         self.dir = None
@@ -48,8 +47,11 @@ class Window(QtWidgets.QMainWindow):
         # Menu
         file_menu = menu_bar.addMenu('&File')
         file_menu.addAction(action_import)
+        file_menu.addAction(action_import)
         file_menu.addSeparator()
         file_menu.addAction(action_quit)
+
+        # menu_bar.addAction('DEBUG', lambda: self.__import("C:\\Users\\Maikel\\Documents\\GitHub\\WikiMusic\\test\\data\\Music"))
 
     def __layout(self):
         parent = QtWidgets.QWidget(self)
@@ -58,15 +60,14 @@ class Window(QtWidgets.QMainWindow):
         # List
         self.list_view = view.MetaMusicListView(parent)
 
-        # Progress Bar
-        self.progress_bar = QtWidgets.QProgressBar(parent)
+        self.progress_bar = QtWidgets.QProgressBar(self)
         self.progress_bar.setValue(0)
         self.progress_bar.setAlignment(QtCore.Qt.AlignCenter)
 
         # Buttons
         action_layout = QtWidgets.QHBoxLayout()
         action_layout.addSpacerItem(util.spacer())
-        collect_button = QtWidgets.QPushButton('Collect', parent)
+        collect_button = QtWidgets.QPushButton('Collect All', parent)
         collect_button.clicked.connect(lambda: self.__execute(self.list_view.selection))
         action_layout.addWidget(collect_button)
         self.save_button = QtWidgets.QPushButton('Save', parent)
@@ -84,7 +85,6 @@ class Window(QtWidgets.QMainWindow):
     # region Content Methods
     def __import(self, d):
         if d and os.path.exists(d) and not self.is_running:
-            self.collected = False
             self.dir = d
             self.mp3_files = util.extract_mp3(d)
             if self.mp3_files:
@@ -109,45 +109,40 @@ class Window(QtWidgets.QMainWindow):
 
     # region Script
     def __execute(self, items):
-        if not self.collected:
-            if items and not self.is_running:
-                self.status_bar.showMessage('Collecting data')
-                self.start = time()
-                self.is_running = True
-                self.tasks = len(items)
-                self.progress_bar.setValue(0)
-                self.progress_bar.setRange(0, self.tasks * 4)  # NOTE: 4 update stages (ref. to thread.py)
+        if items and not self.is_running:
+            self.status_bar.showMessage('Collecting data')
+            self.start = time()
+            self.is_running = True
+            self.tasks = len(items)
+            self.progress_bar.setValue(0)
+            self.progress_bar.setRange(0, self.tasks * 4)
 
-                for t in self.threads:
-                    if not t.isRunning():
-                        t.q = self.q
-                        t.collected.connect(self.__finish_collect)
-                        t.progress_update.connect(self.__handle_progress_update)
-                        t.daemon = True
-                        t.start()
+            for t in self.threads:
+                if not t.isRunning():
+                    t.q = self.q
+                    t.collected.connect(self.__finish_collect)
+                    t.progress_update.connect(self.__handle_progress_update)
+                    t.daemon = True
+                    t.start()
 
-                for item in items:
-                    self.q.put(item)
-        else:
-            self.status_bar.showMessage('Already collected all available data')
+            for item in items:
+                self.q.put(item)
 
-    def __finish_collect(self, item, update):
+    def __finish_collect(self, item, collected):
         self.tasks -= 1
-        if update:
+        if collected:
             item.update()
         if self.tasks == 0:
-            self.collected = True
             self.is_running = False
             self.status_bar.showMessage('Done in {:.2f}s'.format(time() - self.start))
-            self.save_button.setDisabled(False)
 
     def __save(self, items):
         saved = 0
-        if items and self.collected:
-            for item in items:
-                if item.model.save():
-                    saved += 1
-        self.status_bar.showMessage('{} item(s) saved successfully, {} failed'.format(saved, len(items) - saved))
+        for item in items:
+            if item.model.save():
+                saved += 1
+        if saved > 0:
+            self.status_bar.showMessage('{} item(s) saved successfully, {} failed'.format(saved, len(items) - saved))
     # endregion
 
     pass

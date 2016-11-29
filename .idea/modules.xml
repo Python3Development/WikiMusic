@@ -2,7 +2,7 @@
 <project version="4">
   <component name="ProjectModuleManager">
     <modules>
-      <module fileurl="file://$PROJECT_DIR$/../SubtitleSeeker/.idea/SubtitleSeeker.iml" filepath="$PROJECT_DIR$/../SubtitleSeeker/.idea/SubtitleSeeker.iml" />
+      <module fileurl="file://$PROJECT_DIR$/../../Python/Temp/.idea/Temp.iml" filepath="$PROJECT_DIR$/../../Python/Temp/.idea/Temp.iml" />
       <module fileurl="file://$PROJECT_DIR$/.idea/WikiMusic.iml" filepath="$PROJECT_DIR$/.idea/WikiMusic.iml" />
     </modules>
   </component>
