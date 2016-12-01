@@ -3,8 +3,9 @@ import sys
 from queue import Queue
 from time import time
 from PyQt5 import QtCore, QtWidgets
-from wikimusic import resources, util, view, model, dialog, thread
+from wikimusic import resources, util, view, model, dialog, thread, debug
 
+# debug.enable(True)
 
 class Window(QtWidgets.QMainWindow):
     q = Queue()
@@ -51,7 +52,14 @@ class Window(QtWidgets.QMainWindow):
         file_menu.addSeparator()
         file_menu.addAction(action_quit)
 
-        # menu_bar.addAction('DEBUG', lambda: self.__import("C:\\Users\\Maikel\\Documents\\GitHub\\WikiMusic\\test\\data\\Music"))
+        '''
+        menu_bar.addAction('1', lambda: self.__import(
+            "C:\\Users\\Maikel\\Documents\\GitHub\\WikiMusic\\test\\data\\Music_1"))
+        menu_bar.addAction('10', lambda: self.__import(
+            "C:\\Users\\Maikel\\Documents\\GitHub\\WikiMusic\\test\\data\\Music_10"))
+        menu_bar.addAction('50', lambda: self.__import(
+            "C:\\Users\\Maikel\\Documents\\GitHub\\WikiMusic\\test\\data\\Music_50"))
+        '''
 
     def __layout(self):
         parent = QtWidgets.QWidget(self)
@@ -72,7 +80,6 @@ class Window(QtWidgets.QMainWindow):
         action_layout.addWidget(collect_button)
         self.save_button = QtWidgets.QPushButton('Save', parent)
         self.save_button.clicked.connect(lambda: self.__save(self.list_view.selection))
-        self.save_button.setDisabled(True)
         action_layout.addWidget(self.save_button)
 
         # Root Layout
@@ -80,6 +87,7 @@ class Window(QtWidgets.QMainWindow):
         root_layout.addWidget(self.list_view)
         root_layout.addWidget(self.progress_bar)
         root_layout.addLayout(action_layout)
+
     # endregion
 
     # region Content Methods
@@ -100,11 +108,15 @@ class Window(QtWidgets.QMainWindow):
             self.list_view.add(model.Song(mp3))
             d.increment()
         self.status_bar.showMessage('Loaded {} item(s)'.format(len(self.mp3_files)))
+
     # endregion
 
     # region Handlers
     def __handle_progress_update(self, value):
         self.progress_bar.setValue(self.progress_bar.value() + value)
+
+    def __handle_status_update(self, item, status):
+        item.update_status(status)
     # endregion
 
     # region Script
@@ -114,14 +126,16 @@ class Window(QtWidgets.QMainWindow):
             self.start = time()
             self.is_running = True
             self.tasks = len(items)
+            self.save_button.setDisabled(True)
             self.progress_bar.setValue(0)
-            self.progress_bar.setRange(0, self.tasks * 4)
+            self.progress_bar.setRange(0, self.tasks * thread.CollectorThread.MAX)
 
             for t in self.threads:
                 if not t.isRunning():
                     t.q = self.q
                     t.collected.connect(self.__finish_collect)
-                    t.progress_update.connect(self.__handle_progress_update)
+                    t.status_update.connect(self.__handle_status_update)
+                    t.global_progress_update.connect(self.__handle_progress_update)
                     t.daemon = True
                     t.start()
 
@@ -134,22 +148,28 @@ class Window(QtWidgets.QMainWindow):
             item.update()
         if self.tasks == 0:
             self.is_running = False
+            self.save_button.setDisabled(False)
             self.status_bar.showMessage('Done in {:.2f}s'.format(time() - self.start))
 
     def __save(self, items):
-        saved = 0
-        for item in items:
-            if item.model.save():
-                saved += 1
-        if saved > 0:
-            self.status_bar.showMessage('{} item(s) saved successfully, {} failed'.format(saved, len(items) - saved))
+        if not self.is_running:
+            saved = 0
+            for item in items:
+                if item.model.save():
+                    saved += 1
+            if saved > 0:
+                self.status_bar.showMessage(
+                    '{} item(s) saved successfully, {} failed'.format(saved, len(items) - saved))
+
     # endregion
 
     pass
 
+
 # region Exception Hook
 # Back up the reference to the exceptionhook
 sys._excepthook = sys.excepthook
+
 
 def my_exception_hook(exctype, value, traceback):
     # Print the error and traceback
@@ -157,6 +177,7 @@ def my_exception_hook(exctype, value, traceback):
     # Call the normal Exception hook after
     sys._excepthook(exctype, value, traceback)
     sys.exit(1)
+
 
 # Set the exception hook to our wrapping function
 sys.excepthook = my_exception_hook

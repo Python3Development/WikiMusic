@@ -50,27 +50,34 @@ def scrape_metadata(song, wikipage):
     for row in rows:
         header = row.find('th')
         if header:
-            if header.text == 'Released':
+            if header.lines == 'Released':
                 data = row.find('td')
                 if data:
-                    song.release = util.extract_year(data.text)
-            elif header.text == 'Genre':
+                    song.release = util.extract_year(data.lines)
+            elif header.lines == 'Genre':
                 data = row.find('td')
                 if data:
-                    song.genres = util.clean_genres([a.text for a in data.findAll('a')])
+                    song.genres = util.clean_genres([a.lines for a in data.findAll('a')])
     img = table.find('img')
     if img:
-        img_url = 'https:{}'.format(img.get('src'))
-        response = http_request(img_url)
-        if response:
-            song.cover = model.Cover(response.read(), response.info().get('Content-Type'))
+        song.cover = download_cover('https:{}'.format(img.get('src')))
     return True
+
+
+def download_cover(url):
+    response = http_request(url)
+    if response:
+        mime = response.info().get('Content-Type')
+        if 'image' in mime:
+            return model.Cover(response.read(), mime)
 
 
 # region Helper
 def http_request(request):
     try:
         return urllib.request.urlopen(request)
+    except ValueError:
+        pass
     except urllib.error.URLError as e:
         print(e)
 

@@ -20,16 +20,16 @@ class Song(object):
         if self.__audio.tags:
             tit2_frames = self.__audio.tags.getall('TIT2')
             if tit2_frames:
-                self.title = tit2_frames[0].text[0]
+                self.title = tit2_frames[0].lines[0]
             tpe1_frames = self.__audio.tags.getall('TPE1')
             if tpe1_frames:
-                self.artist = tpe1_frames[0].text[0]
+                self.artist = tpe1_frames[0].lines[0]
             tcon_frames = self.__audio.tags.getall('TCON')
             if tcon_frames:
-                self.genres = tcon_frames[0].text[0]
+                self.genres = tcon_frames[0].lines[0]
             tyer_frames = self.__audio.tags.getall('TYER')
             if tyer_frames:
-                self.release = tyer_frames[0].text[0]
+                self.release = tyer_frames[0].lines[0]
             apic_frames = self.__audio.tags.getall('APIC')
             if apic_frames:
                 frame = apic_frames[0]
