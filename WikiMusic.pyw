@@ -182,7 +182,7 @@ class Window(QtWidgets.QMainWindow):
             self.status_bar.showMessage('Done in {:.2f}s'.format(time() - self.start))
 
     def __save(self, items):
-        if not self.is_running and not self.t.isRunning():
+        if items and not self.is_running and not self.t.isRunning():
             self.progress_bar.setValue(0)
             self.progress_bar.setRange(0, len(items))
             self.writer.items = [i.model for i in items]

@@ -1,5 +1,4 @@
-from PyQt5 import QtGui, QtWidgets, QtCore
-from wikimusic import network
+from PyQt5 import QtWidgets, QtCore
 
 
 class ProgressDialog(QtWidgets.QProgressDialog):
@@ -43,34 +42,6 @@ class ProgressDialog(QtWidgets.QProgressDialog):
 
     # endregion
     pass
-
-
-class UrlImageDialog(QtWidgets.QDialog):
-    def __init__(self, parent=None):
-        super().__init__(parent)
-        self.cover = None
-        self.__layout()
-        self.setContentsMargins(0, 0, 0, 0)
-        self.setWindowFlags(QtCore.Qt.FramelessWindowHint | QtCore.Qt.Popup)
-        self.setFixedSize(200, 20)
-
-    def __layout(self):
-        self.url_input = QtWidgets.QLineEdit(self)
-        self.url_input.setFixedSize(200, 20)
-        self.url_input.editingFinished.connect(self.__handle_edit_finished)
-
-    def __handle_edit_finished(self):
-        url = self.url_input.text()
-        if url:
-            self.cover = network.download_cover(url)
-        self.accept()
-
-    def showEvent(self, event):
-        self.url_input.setFocus()
-        geom = self.frameGeometry()
-        geom.moveBottomLeft(QtGui.QCursor.pos())
-        self.setGeometry(geom)
-        super().showEvent(event)
 
 
 def alert(parent, title, message):

@@ -1,9 +1,13 @@
 import urllib.request
 import urllib.error
 import urllib.parse
+import warnings
 import wikipedia
 from bs4 import BeautifulSoup
 from wikimusic import model, util, debug
+
+# Suppress warnings that come with wikipedia library
+warnings.filterwarnings("ignore")
 
 THRESHOLD = 0.75
 
@@ -27,13 +31,21 @@ def similarity_threshold_filter(options, find):
                 r = util.similarity(s, find)
                 debug.log('  {}: {:.2f}'.format(s, r))
                 if r >= THRESHOLD:
-                    return wikipedia.page(o.replace('\"', ''))
+                    try:
+                        return wikipedia.page(title=o.translate({ord(i): None for i in '"?!'}))
+                    except (wikipedia.exceptions.DisambiguationError, wikipedia.exceptions.PageError):
+                        debug.log("[EXCEPTION] Filtered page ({})".format(o))
+                        return
 
 
 def perfect_match_filter(options, find):
     matches = [o for o in options if find in o]
     if len(matches) == 1:
-        return wikipedia.page(matches[0].replace('\"', ''))
+        try:
+            return wikipedia.page(title=matches[0].translate({ord(i): None for i in '"?!'}))
+        except (wikipedia.exceptions.DisambiguationError, wikipedia.exceptions.PageError):
+            debug.log("[EXCEPTION] Filtered page ({})".format(matches[0]))
+            return
 
 
 def scrape_metadata(song, wikipage):
@@ -53,20 +65,24 @@ def scrape_metadata(song, wikipage):
         header = row.find('th')
         if header:
             if 'album' in header.text:
-                a = row.find('a')
-                if a:
-                    song.album = a.text
-                    found += 1
+                found += 1
+                i = row.find('i')
+                if i:
+                    a = i.find('a')
+                    if a:
+                        song.album = a.text
+                    elif i.text:
+                        song.album = i.text
             elif header.text == 'Released':
+                found += 1
                 data = row.find('td')
                 if data:
                     song.release = util.extract_year(data.text)
-                    found += 1
             elif header.text == 'Genre':
+                found += 1
                 data = row.find('td')
                 if data:
                     song.genres = util.clean_genres([a.text for a in data.findAll('a')])
-                    found += 1
 
     img = table.find('img')
     if img:
@@ -95,4 +111,5 @@ def http_request(request):
 
 def build_request(url, headers=None):
     return urllib.request.Request(url=url, headers=headers)
+
 # endregion
