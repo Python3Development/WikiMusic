@@ -190,6 +190,7 @@ class MetaMusicListItem(QtWidgets.QWidget):
 
         # Content (Image / Artist - Title, Genre, Year)
         self.frame = QtWidgets.QFrame(self)
+        self.frame.setSizePolicy(QtWidgets.QSizePolicy.Fixed, QtWidgets.QSizePolicy.Fixed)
 
         grid_layout = QtWidgets.QGridLayout()
         grid_layout.setContentsMargins(0, 0, 0, 0)
