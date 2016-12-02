@@ -1,9 +1,9 @@
 DEBUG = False
 
 
-def enable(e):
+def enable():
     global DEBUG
-    DEBUG = e
+    DEBUG = True
 
 
 def log(text):

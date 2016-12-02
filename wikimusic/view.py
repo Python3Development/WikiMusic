@@ -1,11 +1,6 @@
 import os
-from PyQt5 import QtGui
-
-from PyQt5 import QtWidgets, QtCore
-
-from wikimusic import dialog
-from wikimusic import network
-from wikimusic import util
+from PyQt5 import QtGui, QtWidgets, QtCore
+from wikimusic import util, async
 
 
 class VerticalLabel(QtWidgets.QLabel):
@@ -22,6 +17,99 @@ class VerticalLabel(QtWidgets.QLabel):
     @lines.setter
     def lines(self, line):
         self.setText(line + '<br>')
+
+
+class FloatingLineEdit(QtWidgets.QDialog):
+    editingFinished = QtCore.pyqtSignal()
+
+    def __init__(self, width=200, parent=None):
+        super().__init__(parent)
+        self.line_edit = QtWidgets.QLineEdit(self)
+        self.line_edit.setFixedWidth(width)
+        self.line_edit.returnPressed.connect(self.__handle_edit_finished)
+
+        self.setContentsMargins(0, 0, 0, 0)
+        self.setWindowFlags(QtCore.Qt.FramelessWindowHint | QtCore.Qt.Popup)
+        self.setFixedSize(width, 20)
+
+    def showEvent(self, event):
+        self.line_edit.setFocus()
+        geom = self.frameGeometry()
+        geom.moveBottomLeft(QtGui.QCursor.pos())
+        self.setGeometry(geom)
+        super().showEvent(event)
+
+    def __handle_edit_finished(self):
+        self.editingFinished.emit()
+        self.text = None
+        self.accept()
+
+    @property
+    def text(self):
+        return self.line_edit.text()
+
+    @text.setter
+    def text(self, value):
+        self.line_edit.setText(value)
+
+
+class CoverLabel(QtWidgets.QLabel):
+    editingFinished = QtCore.pyqtSignal()
+
+    def __init__(self, size, cover=None, parent=None):
+        super().__init__(parent)
+        self.__cover = cover
+        self.__menu()
+        self.__setup()
+        self.setFixedSize(size, size)
+        self.setScaledContents(True)
+        self.setCover(cover)
+
+    def __menu(self):
+        self.menu = QtWidgets.QMenu(self)
+        self.menu.addAction('New', lambda: self.floating_line_edit.show())
+        self.menu.addAction('Clear', lambda: self.__handle_set_cover(None))
+
+    def __setup(self):
+        self.t = QtCore.QThread()
+        self.downloader = async.Downloader()
+        self.t.started.connect(self.downloader.download)
+        self.downloader.moveToThread(self.t)
+        self.downloader.finished.connect(self.__handle_download_complete)
+
+        self.floating_line_edit = FloatingLineEdit(parent=self)
+        self.floating_line_edit.editingFinished.connect(self.__handle_download_image)
+
+    def contextMenuEvent(self, event):
+        self.menu.exec_(self.mapToGlobal(event.pos()))
+
+    def setCover(self, cover):
+        self.__cover = cover
+        if cover:
+            self.setPixmap(util.byte_image(cover.data))
+            self.setToolTip('<img src="data:image/png;base64,{}">'.format(util.base64_byte_image(cover.data)))
+        else:
+            self.setPixmap(util.image('cover.png'))
+
+    def cover(self):
+        return self.__cover
+
+    def __handle_download_image(self):
+        self.downloader.url = self.floating_line_edit.text
+        if not self.t.isRunning():
+            self.t.start()
+        else:
+            print('Running')
+
+    def __handle_download_complete(self):
+        self.t.quit()
+        cover = self.downloader.cover
+        if cover:
+            self.__handle_set_cover(cover)
+
+    def __handle_set_cover(self, cover):
+        self.setCover(cover)
+        self.editingFinished.emit()
 
 
 class MetaMusicListView(QtWidgets.QScrollArea):
@@ -108,38 +196,35 @@ class MetaMusicListItem(QtWidgets.QWidget):
         self.frame.setLayout(grid_layout)
 
         # Image
-        self.cover_label = QtWidgets.QLabel(self)
-        self.cover_label.setFixedSize(100, 100)
-        self.cover_label.setScaledContents(True)
-        self.cover_label.setContextMenuPolicy(QtCore.Qt.CustomContextMenu)
-        self.cover_label.customContextMenuRequested.connect(self.__handle_cover_context_menu)
+        self.cover_label = CoverLabel(size=100, parent=self)
+        self.cover_label.editingFinished.connect(self.__handle_cover_edit_finished)
         grid_layout.addWidget(self.cover_label, 0, 0, 4, 1)
 
         # Info
-        self.artist_input = QtWidgets.QLineEdit(self)
-        self.artist_input.setFixedWidth(200)
-        self.artist_input.editingFinished.connect(self.__handle_artist_input_finished)
-        grid_layout.addWidget(self.artist_input, 0, 1)
-
         self.title_input = QtWidgets.QLineEdit(self)
-        self.title_input.setFixedWidth(200)
-        self.title_input.editingFinished.connect(self.__handle_title_input_finished)
-        grid_layout.addWidget(self.title_input, 0, 2)
+        self.title_input.setFixedWidth(250)
+        self.title_input.editingFinished.connect(self.__handle_title_edit_finished)
+        grid_layout.addWidget(self.title_input, 0, 1, 1, 2)
+
+        self.artist_input = QtWidgets.QLineEdit(self)
+        self.artist_input.setFixedWidth(250)
+        self.artist_input.editingFinished.connect(self.__handle_artist_edit_finished)
+        grid_layout.addWidget(self.artist_input, 1, 1, 1, 2)
 
         self.album_input = QtWidgets.QLineEdit(self)
-        self.album_input.setFixedWidth(185)
-        self.album_input.editingFinished.connect(self.__handle_album_input_finished)
-        grid_layout.addWidget(self.album_input, 1, 1, 1, 2)
-
-        self.genre_input = QtWidgets.QLineEdit(self)
-        self.genre_input.setFixedWidth(170)
-        self.genre_input.editingFinished.connect(self.__handle_genre_input_finished)
-        grid_layout.addWidget(self.genre_input, 2, 1, 1, 2)
+        self.album_input.setFixedWidth(250 - 30 - grid_layout.spacing())
+        self.album_input.editingFinished.connect(self.__handle_album_edit_finished)
+        grid_layout.addWidget(self.album_input, 2, 1)
 
         self.year_input = QtWidgets.QLineEdit(self)
         self.year_input.setFixedWidth(30)
-        self.year_input.editingFinished.connect(self.__handle_year_input_finished)
-        grid_layout.addWidget(self.year_input, 3, 1)
+        self.year_input.editingFinished.connect(self.__handle_year_edit_finished)
+        grid_layout.addWidget(self.year_input, 2, 2)
+
+        self.genre_input = QtWidgets.QLineEdit(self)
+        self.genre_input.setFixedWidth(250)
+        self.genre_input.editingFinished.connect(self.__handle_genre_edit_finished)
+        grid_layout.addWidget(self.genre_input, 3, 1, 1, 2)
 
         # Status
         self.status_label = VerticalLabel(self)
@@ -153,11 +238,12 @@ class MetaMusicListItem(QtWidgets.QWidget):
             self.checkbox_file.setText(os.path.basename(self.__model.file))
             m, s = divmod(self.__model.length, 60)
             self.time_label.setText('({:.0f}:{:02.0f})'.format(m, s))
-            self.__load_cover(self.__model.cover)
+            self.cover_label.setCover(self.__model.cover)
             self.__default_line_edit(self.artist_input, self.__model.artist or 'Artist')
             self.__default_line_edit(self.title_input, self.__model.title or 'Title')
             self.__default_line_edit(self.album_input, self.__model.album or 'Album')
-            self.__default_line_edit(self.genre_input, ', '.join(self.__model.genres) if self.__model.genres else 'Genre')
+            self.__default_line_edit(self.genre_input,
+                                     ', '.join(self.__model.genres) if self.__model.genres else 'Genre')
             self.__default_line_edit(self.year_input, self.__model.release or 'Year')
 
             if not self.__model.artist or not self.__model.title:
@@ -183,6 +269,7 @@ class MetaMusicListItem(QtWidgets.QWidget):
     @property
     def checked(self):
         return self.checkbox_file.isChecked()
+
     # endregion
 
     # region Methods
@@ -191,25 +278,18 @@ class MetaMusicListItem(QtWidgets.QWidget):
 
     def update_status(self, status):
         self.status_label.lines += status
+
     # endregion
 
     # region Helper
     def __populate(self):
         if self.__model:
-            self.__load_cover(self.__model.cover)
+            self.cover_label.setCover(self.__model.cover)
             self.artist_input.setText(self.__model.artist)
             self.title_input.setText(self.__model.title)
             self.album_input.setText(self.__model.album)
             self.genre_input.setText(', '.join(self.__model.genres) if self.__model.genres else None)
             self.year_input.setText(self.__model.release)
-
-    def __load_cover(self, cover):
-        if cover:
-            self.cover_label.setPixmap(util.byte_image(self.__model.cover.data))
-            self.cover_label.setToolTip('<img src="data:image/png;base64,{}">'
-                                        .format(util.base64_byte_image(self.__model.cover.data)))
-        else:
-            self.cover_label.setPixmap(util.image('cover.png'))
 
     def __default_line_edit(self, line_edit, value):
         line_edit.setPlaceholderText(value)
@@ -218,44 +298,29 @@ class MetaMusicListItem(QtWidgets.QWidget):
     # endregion
 
     # region Handlers
-    def __handle_cover_context_menu(self, point):
-        menu = QtWidgets.QMenu()
-        menu.addAction('Set', self.__handle_show_input_popup)
-        if self.__model.cover:
-            menu.addAction('Clear', self.__handle_clear_cover)
-        menu.exec_(self.mapToGlobal(point))
-
-    def __handle_show_input_popup(self):
-        d = dialog.UrlImageDialog()
-        if d.exec_():
-            if d.cover:
-                self.__model.cover = d.cover
-                self.__load_cover(d.cover)
-
-    def __handle_clear_cover(self):
-        self.__model.cover = None
-        self.__load_cover(None)
-
     def __handle_checkbox_state_change(self, state):
         self.frame.setHidden(state == QtCore.Qt.Unchecked)
 
-    def __handle_artist_input_finished(self):
+    def __handle_cover_edit_finished(self):
+        self.__model.cover = self.cover_label.cover()
+
+    def __handle_artist_edit_finished(self):
         self.__model.artist = self.artist_input.text()
 
-    def __handle_title_input_finished(self):
+    def __handle_title_edit_finished(self):
         self.__model.title = self.title_input.text()
 
-    def __handle_album_input_finished(self):
+    def __handle_album_edit_finished(self):
         self.__model.album = self.album_input.text()
 
-    def __handle_genre_input_finished(self):
+    def __handle_genre_edit_finished(self):
         self.__model.genres = self.genre_input.text().split(', ') if self.genre_input.text() else None
 
-    def __handle_year_input_finished(self):
+    def __handle_year_edit_finished(self):
         value = self.year_input.text()
         if len(value) == 4 and util.is_int(value):
             self.__model.release = value
         else:
-            self.year_input.setText(self.__model.release)
+            self.year_input.setText(None)
     # endregion
     pass

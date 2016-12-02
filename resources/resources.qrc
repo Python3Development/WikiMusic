@@ -2,6 +2,7 @@
   <qresource prefix="img">
     <file>close.png</file>
     <file>folder.png</file>
+	<file>file.png</file>
 	<file>app.png</file>
 	<file>cover.png</file>
   </qresource>

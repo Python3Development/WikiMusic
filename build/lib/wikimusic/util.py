@@ -2,6 +2,7 @@ import os
 import glob
 import base64
 import re
+import difflib
 
 from PyQt5 import QtWidgets, QtGui, QtCore
 
@@ -60,6 +61,15 @@ def is_int(value):
         return False
 
 
+def similarity(value, value2):
+    return difflib.SequenceMatcher(lambda x: x == ' ', value, value2).ratio()
+
+
+def parenthesis_content(s):
+    match = re.search(r'\((.*)\)', s)
+    return match.group(1) if match else None
+
+
 # Font
 def font(size=None, bold=False):
     f = QtGui.QFont()
@@ -72,5 +82,3 @@ def font(size=None, bold=False):
 # GUI
 def spacer():
     return QtWidgets.QSpacerItem(40, 20, QtWidgets.QSizePolicy.Expanding, QtWidgets.QSizePolicy.Minimum)
-
-

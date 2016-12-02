@@ -8,6 +8,22 @@ from wikimusic import network
 from wikimusic import util
 
 
+class VerticalLabel(QtWidgets.QLabel):
+    def __init__(self, parent=None):
+        super().__init__(parent)
+        self.setAlignment(QtCore.Qt.AlignTop)
+        self.setTextFormat(QtCore.Qt.RichText)
+        self.setStyleSheet('color: gray;')
+
+    @property
+    def lines(self):
+        return self.text()
+
+    @lines.setter
+    def lines(self, line):
+        self.setText(line + '<br>')
+
+
 class MetaMusicListView(QtWidgets.QScrollArea):
     def __init__(self, parent=None):
         super().__init__(parent)
@@ -93,11 +109,11 @@ class MetaMusicListItem(QtWidgets.QWidget):
 
         # Image
         self.cover_label = QtWidgets.QLabel(self)
-        self.cover_label.setFixedSize(80, 80)
+        self.cover_label.setFixedSize(100, 100)
         self.cover_label.setScaledContents(True)
         self.cover_label.setContextMenuPolicy(QtCore.Qt.CustomContextMenu)
         self.cover_label.customContextMenuRequested.connect(self.__handle_cover_context_menu)
-        grid_layout.addWidget(self.cover_label, 0, 0, 3, 1)
+        grid_layout.addWidget(self.cover_label, 0, 0, 4, 1)
 
         # Info
         self.artist_input = QtWidgets.QLineEdit(self)
@@ -105,24 +121,30 @@ class MetaMusicListItem(QtWidgets.QWidget):
         self.artist_input.editingFinished.connect(self.__handle_artist_input_finished)
         grid_layout.addWidget(self.artist_input, 0, 1)
 
-        separator = QtWidgets.QLabel('-', self)
-        separator.setSizePolicy(QtWidgets.QSizePolicy.Fixed, QtWidgets.QSizePolicy.Fixed)
-        grid_layout.addWidget(separator, 0, 2)
-
         self.title_input = QtWidgets.QLineEdit(self)
         self.title_input.setFixedWidth(200)
         self.title_input.editingFinished.connect(self.__handle_title_input_finished)
-        grid_layout.addWidget(self.title_input, 0, 3)
+        grid_layout.addWidget(self.title_input, 0, 2)
+
+        self.album_input = QtWidgets.QLineEdit(self)
+        self.album_input.setFixedWidth(185)
+        self.album_input.editingFinished.connect(self.__handle_album_input_finished)
+        grid_layout.addWidget(self.album_input, 1, 1, 1, 2)
 
         self.genre_input = QtWidgets.QLineEdit(self)
-        self.genre_input.setFixedWidth(150)
+        self.genre_input.setFixedWidth(170)
         self.genre_input.editingFinished.connect(self.__handle_genre_input_finished)
-        grid_layout.addWidget(self.genre_input, 1, 1)
+        grid_layout.addWidget(self.genre_input, 2, 1, 1, 2)
 
         self.year_input = QtWidgets.QLineEdit(self)
         self.year_input.setFixedWidth(30)
         self.year_input.editingFinished.connect(self.__handle_year_input_finished)
-        grid_layout.addWidget(self.year_input, 2, 1)
+        grid_layout.addWidget(self.year_input, 3, 1)
+
+        # Status
+        self.status_label = VerticalLabel(self)
+        self.status_label.setFixedSize(75, 100)
+        grid_layout.addWidget(self.status_label, 0, 3, 4, 1)
 
         layout.addWidget(self.frame)
 
@@ -131,17 +153,11 @@ class MetaMusicListItem(QtWidgets.QWidget):
             self.checkbox_file.setText(os.path.basename(self.__model.file))
             m, s = divmod(self.__model.length, 60)
             self.time_label.setText('({:.0f}:{:02.0f})'.format(m, s))
-
-            if self.__model.cover:
-                self.cover_label.setPixmap(util.byte_image(self.__model.cover.data))
-                self.cover_label.setToolTip('<img src="data:image/png;base64,{}">'
-                                            .format(util.base64_byte_image(self.__model.cover.data)))
-            else:
-                self.cover_label.setPixmap(util.image('cover.png'))
-
+            self.__load_cover(self.__model.cover)
             self.__default_line_edit(self.artist_input, self.__model.artist or 'Artist')
             self.__default_line_edit(self.title_input, self.__model.title or 'Title')
-            self.__default_line_edit(self.genre_input, self.__model.genres or 'Genre')
+            self.__default_line_edit(self.album_input, self.__model.album or 'Album')
+            self.__default_line_edit(self.genre_input, ', '.join(self.__model.genres) if self.__model.genres else 'Genre')
             self.__default_line_edit(self.year_input, self.__model.release or 'Year')
 
             if not self.__model.artist or not self.__model.title:
@@ -167,12 +183,14 @@ class MetaMusicListItem(QtWidgets.QWidget):
     @property
     def checked(self):
         return self.checkbox_file.isChecked()
-
     # endregion
 
     # region Methods
     def update(self):
         self.__populate()
+
+    def update_status(self, status):
+        self.status_label.lines += status
     # endregion
 
     # region Helper
@@ -181,6 +199,7 @@ class MetaMusicListItem(QtWidgets.QWidget):
             self.__load_cover(self.__model.cover)
             self.artist_input.setText(self.__model.artist)
             self.title_input.setText(self.__model.title)
+            self.album_input.setText(self.__model.album)
             self.genre_input.setText(', '.join(self.__model.genres) if self.__model.genres else None)
             self.year_input.setText(self.__model.release)
 
@@ -225,6 +244,9 @@ class MetaMusicListItem(QtWidgets.QWidget):
 
     def __handle_title_input_finished(self):
         self.__model.title = self.title_input.text()
+
+    def __handle_album_input_finished(self):
+        self.__model.album = self.album_input.text()
 
     def __handle_genre_input_finished(self):
         self.__model.genres = self.genre_input.text().split(', ') if self.genre_input.text() else None

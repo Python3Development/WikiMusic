@@ -50,7 +50,9 @@ def clean_genres(genres):
 
 
 def extract_year(data):
-    return re.findall(r'\d{4}', data)[0]
+    match = re.findall(r'\d{4}', data)
+    if len(match) > 0:
+        return match[0]
 
 
 def is_int(value):

@@ -3,9 +3,10 @@ import sys
 from queue import Queue
 from time import time
 from PyQt5 import QtCore, QtWidgets
-from wikimusic import resources, util, view, model, dialog, thread, debug
+from wikimusic import resources, util, view, model, dialog, thread, debug, async
 
-# debug.enable(True)
+# debug.enable()
+
 
 class Window(QtWidgets.QMainWindow):
     q = Queue()
@@ -28,6 +29,13 @@ class Window(QtWidgets.QMainWindow):
         self.dir = None
         self.mp3_files = None
 
+        self.t = QtCore.QThread()
+        self.writer = async.Writer()
+        self.t.started.connect(self.writer.write)
+        self.writer.moveToThread(self.t)
+        self.writer.update.connect(lambda: self.__handle_progress_update(1))
+        self.writer.finished.connect(self.__handle_write_complete)
+
     def __menu(self):
         # Status Bar
         self.status_bar = self.statusBar()
@@ -37,9 +45,13 @@ class Window(QtWidgets.QMainWindow):
         menu_bar = self.menuBar()
 
         # Menu Actions
-        action_import = QtWidgets.QAction(util.icon('folder.png'), '&Import', self)
+        action_import = QtWidgets.QAction(util.icon('file.png'), '&Import Files', self)
         action_import.setShortcut('Ctrl+I')
-        action_import.triggered.connect(lambda: self.__import(QtWidgets.QFileDialog.getExistingDirectory(parent=self)))
+        action_import.triggered.connect(self.__handle_import)
+
+        action_import_folder = QtWidgets.QAction(util.icon('folder.png'), '&Import Folder', self)
+        action_import_folder.setShortcut('Ctrl+Shift+I')
+        action_import_folder.triggered.connect(self.__handle_import_folder)
 
         action_quit = QtWidgets.QAction(util.icon('close.png'), '&Exit', self)
         action_quit.setShortcut('Shift+F4')
@@ -48,18 +60,18 @@ class Window(QtWidgets.QMainWindow):
         # Menu
         file_menu = menu_bar.addMenu('&File')
         file_menu.addAction(action_import)
-        file_menu.addAction(action_import)
+        file_menu.addAction(action_import_folder)
         file_menu.addSeparator()
         file_menu.addAction(action_quit)
 
-        '''
-        menu_bar.addAction('1', lambda: self.__import(
-            "C:\\Users\\Maikel\\Documents\\GitHub\\WikiMusic\\test\\data\\Music_1"))
-        menu_bar.addAction('10', lambda: self.__import(
-            "C:\\Users\\Maikel\\Documents\\GitHub\\WikiMusic\\test\\data\\Music_10"))
-        menu_bar.addAction('50', lambda: self.__import(
-            "C:\\Users\\Maikel\\Documents\\GitHub\\WikiMusic\\test\\data\\Music_50"))
-        '''
+        # NOTE Debug
+        if debug.DEBUG:
+            menu_bar.addAction('1', lambda: self.__import_folder(
+                "C:\\Users\\Maikel\\Documents\\GitHub\\WikiMusic\\test\\data\\Music_1"))
+            menu_bar.addAction('10', lambda: self.__import_folder(
+                "C:\\Users\\Maikel\\Documents\\GitHub\\WikiMusic\\test\\data\\Music_10"))
+            menu_bar.addAction('50', lambda: self.__import_folder(
+                "C:\\Users\\Maikel\\Documents\\GitHub\\WikiMusic\\test\\data\\Music_50"))
 
     def __layout(self):
         parent = QtWidgets.QWidget(self)
@@ -91,7 +103,7 @@ class Window(QtWidgets.QMainWindow):
     # endregion
 
     # region Content Methods
-    def __import(self, d):
+    def __import_folder(self, d):
         if d and os.path.exists(d) and not self.is_running:
             self.dir = d
             self.mp3_files = util.extract_mp3(d)
@@ -99,6 +111,11 @@ class Window(QtWidgets.QMainWindow):
                 self.__populate()
             else:
                 dialog.alert(self, 'Not found', 'No MP3 files found')
+
+    def __import(self, files):
+        if files:
+            self.mp3_files = files
+            self.__populate()
 
     def __populate(self):
         self.list_view.clear()
@@ -112,11 +129,24 @@ class Window(QtWidgets.QMainWindow):
     # endregion
 
     # region Handlers
+    def __handle_import(self):
+        files_filter = QtWidgets.QFileDialog.getOpenFileNames(parent=self, filter='Audio (*.mp3)')
+        self.__import(files_filter[0])
+
+    def __handle_import_folder(self):
+        d = QtWidgets.QFileDialog.getExistingDirectory(parent=self)
+        self.__import_folder(d)
+
     def __handle_progress_update(self, value):
         self.progress_bar.setValue(self.progress_bar.value() + value)
 
     def __handle_status_update(self, item, status):
         item.update_status(status)
+
+    def __handle_write_complete(self, write_count, fail_count, runtime):
+        self.t.quit()
+        self.status_bar.showMessage(
+            '{} item(s) saved successfully, {} failed ({:.2f}s)'.format(write_count, fail_count, runtime))
     # endregion
 
     # region Script
@@ -152,35 +182,25 @@ class Window(QtWidgets.QMainWindow):
             self.status_bar.showMessage('Done in {:.2f}s'.format(time() - self.start))
 
     def __save(self, items):
-        if not self.is_running:
-            saved = 0
-            for item in items:
-                if item.model.save():
-                    saved += 1
-            if saved > 0:
-                self.status_bar.showMessage(
-                    '{} item(s) saved successfully, {} failed'.format(saved, len(items) - saved))
-
+        if not self.is_running and not self.t.isRunning():
+            self.progress_bar.setValue(0)
+            self.progress_bar.setRange(0, len(items))
+            self.writer.items = [i.model for i in items]
+            self.t.start()
     # endregion
 
     pass
 
 
 # region Exception Hook
-# Back up the reference to the exceptionhook
-sys._excepthook = sys.excepthook
+sys._hook = sys.excepthook
 
-
-def my_exception_hook(exctype, value, traceback):
-    # Print the error and traceback
+def hook(exctype, value, traceback):
     print(exctype, value, traceback)
-    # Call the normal Exception hook after
-    sys._excepthook(exctype, value, traceback)
+    sys._hook(exctype, value, traceback)
     sys.exit(1)
 
-
-# Set the exception hook to our wrapping function
-sys.excepthook = my_exception_hook
+sys.excepthook = hook
 # endregion
 
 
