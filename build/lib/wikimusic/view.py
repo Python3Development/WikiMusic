@@ -190,6 +190,7 @@ class MetaMusicListItem(QtWidgets.QWidget):
 
         # Content (Image / Artist - Title, Genre, Year)
         self.frame = QtWidgets.QFrame(self)
+        self.frame.setSizePolicy(QtWidgets.QSizePolicy.Fixed, QtWidgets.QSizePolicy.Fixed)
 
         grid_layout = QtWidgets.QGridLayout()
         grid_layout.setContentsMargins(0, 0, 0, 0)
@@ -235,7 +236,7 @@ class MetaMusicListItem(QtWidgets.QWidget):
 
     def __setup(self):
         if self.__model:
-            self.checkbox_file.setText(os.path.basename(self.__model.file))
+            self.checkbox_file.setText(os.path.basename(self.__model.file).replace('&', '&&'))
             m, s = divmod(self.__model.length, 60)
             self.time_label.setText('({:.0f}:{:02.0f})'.format(m, s))
             self.cover_label.setCover(self.__model.cover)

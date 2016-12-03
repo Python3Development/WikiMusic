@@ -5,7 +5,7 @@ from time import time
 from PyQt5 import QtCore, QtWidgets
 from wikimusic import resources, util, view, model, dialog, thread, debug, async
 
-# debug.enable()
+debug.enable()
 
 
 class Window(QtWidgets.QMainWindow):
