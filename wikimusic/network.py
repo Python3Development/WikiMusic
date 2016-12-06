@@ -27,7 +27,8 @@ def similarity_threshold_filter(options, find):
         c = util.parenthesis_content(o)
         if c:
             debug.log('{} --> {}'.format(o, c))
-            for s in c.split(' '):
+            s = ' '.join(w for w in c.split() if w[0].isupper())
+            if s:
                 r = util.similarity(s, find)
                 debug.log('  {}: {:.2f}'.format(s, r))
                 if r >= THRESHOLD:
