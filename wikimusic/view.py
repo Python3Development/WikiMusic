@@ -113,18 +113,21 @@ class CoverLabel(QtWidgets.QLabel):
 
 
 class MetaMusicListView(QtWidgets.QScrollArea):
+    selectionChanged = QtCore.pyqtSignal(int)
+
     def __init__(self, parent=None):
         super().__init__(parent)
         self.items = list()
+        self.__selected = 0
         self.__layout()
         self.setWidgetResizable(True)
 
     # region Setup
     def __layout(self):
-        parent = QtWidgets.QWidget(self)
-        parent.setSizePolicy(QtWidgets.QSizePolicy.Fixed, QtWidgets.QSizePolicy.Fixed)
-        self.setWidget(parent)
-        self.list = QtWidgets.QVBoxLayout(parent)
+        w = QtWidgets.QWidget(self)
+        w.setSizePolicy(QtWidgets.QSizePolicy.Fixed, QtWidgets.QSizePolicy.Fixed)
+        self.setWidget(w)
+        self.list = QtWidgets.QVBoxLayout(w)
 
     # endregion
 
@@ -140,14 +143,24 @@ class MetaMusicListView(QtWidgets.QScrollArea):
         if self.items:
             self.__line()
         view = MetaMusicListItem(item)
+        view.selected.connect(self.__handle_selection_change)
         self.items.append(view)
         self.list.addWidget(view)
+        self.__selected += 1
 
     def clear(self):
         self.items.clear()
+        self.__selected = 0
         self.__layout()
 
     # endregion
+
+    def __handle_selection_change(self, selected):
+        if selected:
+            self.__selected += 1
+        else:
+            self.__selected -= 1
+        self.selectionChanged.emit(self.__selected)
 
     # region Helpers
     def __line(self):
@@ -161,6 +174,8 @@ class MetaMusicListView(QtWidgets.QScrollArea):
 
 
 class MetaMusicListItem(QtWidgets.QWidget):
+    selected = QtCore.pyqtSignal(bool)
+
     def __init__(self, model, parent=None):
         super().__init__(parent)
         self.__model = model
@@ -300,7 +315,9 @@ class MetaMusicListItem(QtWidgets.QWidget):
 
     # region Handlers
     def __handle_checkbox_state_change(self, state):
-        self.frame.setHidden(state == QtCore.Qt.Unchecked)
+        checked = state == QtCore.Qt.Checked
+        self.frame.setHidden(not checked)
+        self.selected.emit(checked)
 
     def __handle_cover_edit_finished(self):
         self.__model.cover = self.cover_label.cover()
@@ -323,5 +340,6 @@ class MetaMusicListItem(QtWidgets.QWidget):
             self.__model.release = value
         else:
             self.year_input.setText(None)
+
     # endregion
     pass

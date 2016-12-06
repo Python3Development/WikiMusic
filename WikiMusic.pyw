@@ -3,9 +3,9 @@ import sys
 from queue import Queue
 from time import time
 from PyQt5 import QtCore, QtWidgets
-from wikimusic import resources, util, view, model, dialog, thread, debug, async
+from wikimusic import resources, util, view, model, dialog, thread, debug
 
-debug.enable()
+# debug.enable()
 
 
 class Window(QtWidgets.QMainWindow):
@@ -24,17 +24,10 @@ class Window(QtWidgets.QMainWindow):
     # region Setup
     def __setup(self):
         self.tasks = 0
-        self.is_running = False
+        self.is_collecting = False
         self.start = None
         self.dir = None
         self.mp3_files = None
-
-        self.t = QtCore.QThread()
-        self.writer = async.Writer()
-        self.t.started.connect(self.writer.write)
-        self.writer.moveToThread(self.t)
-        self.writer.update.connect(lambda: self.__handle_progress_update(1))
-        self.writer.finished.connect(self.__handle_write_complete)
 
     def __menu(self):
         # Status Bar
@@ -74,37 +67,40 @@ class Window(QtWidgets.QMainWindow):
                 "C:\\Users\\Maikel\\Documents\\GitHub\\WikiMusic\\test\\data\\Music_50"))
 
     def __layout(self):
-        parent = QtWidgets.QWidget(self)
-        self.setCentralWidget(parent)
+        cw = QtWidgets.QWidget(self)
+        self.setCentralWidget(cw)
 
         # List
-        self.list_view = view.MetaMusicListView(parent)
+        self.list_view = view.MetaMusicListView(cw)
+        self.list_view.selectionChanged.connect(self.__handle_selection_change)
 
-        self.progress_bar = QtWidgets.QProgressBar(self)
+        self.progress_bar = QtWidgets.QProgressBar(cw)
         self.progress_bar.setValue(0)
         self.progress_bar.setAlignment(QtCore.Qt.AlignCenter)
 
         # Buttons
         action_layout = QtWidgets.QHBoxLayout()
         action_layout.addSpacerItem(util.spacer())
-        collect_button = QtWidgets.QPushButton('Collect All', parent)
+        self.selection_label = QtWidgets.QLabel(cw)
+        action_layout.addWidget(self.selection_label)
+        collect_button = QtWidgets.QPushButton('Collect All', cw)
         collect_button.clicked.connect(lambda: self.__execute(self.list_view.selection))
         action_layout.addWidget(collect_button)
-        self.save_button = QtWidgets.QPushButton('Save', parent)
+        self.save_button = QtWidgets.QPushButton('Save', cw)
         self.save_button.clicked.connect(lambda: self.__save(self.list_view.selection))
         action_layout.addWidget(self.save_button)
 
         # Root Layout
-        root_layout = QtWidgets.QVBoxLayout(parent)
-        root_layout.addWidget(self.list_view)
-        root_layout.addWidget(self.progress_bar)
-        root_layout.addLayout(action_layout)
+        layout = QtWidgets.QVBoxLayout(cw)
+        layout.addWidget(self.list_view)
+        layout.addWidget(self.progress_bar)
+        layout.addLayout(action_layout)
 
     # endregion
 
     # region Content Methods
     def __import_folder(self, d):
-        if d and os.path.exists(d) and not self.is_running:
+        if d and os.path.exists(d) and not self.is_collecting:
             self.dir = d
             self.mp3_files = util.extract_mp3(d)
             if self.mp3_files:
@@ -119,12 +115,19 @@ class Window(QtWidgets.QMainWindow):
 
     def __populate(self):
         self.list_view.clear()
+        loaded = []
         d = dialog.ProgressDialog(parent=self, title='Importing', range_=len(self.mp3_files))
         for mp3 in self.mp3_files:
+            if d.wasCanceled():
+                break
             d.setLabelText(os.path.basename(mp3))
             self.list_view.add(model.Song(mp3))
+            loaded.append(mp3)
             d.increment()
-        self.status_bar.showMessage('Loaded {} item(s)'.format(len(self.mp3_files)))
+        self.mp3_files = loaded
+        count = len(self.mp3_files)
+        self.status_bar.showMessage('Loaded {} item(s)'.format(count))
+        self.selection_label.setText('{}/{}'.format(count, count))
 
     # endregion
 
@@ -143,50 +146,66 @@ class Window(QtWidgets.QMainWindow):
     def __handle_status_update(self, item, status):
         item.update_status(status)
 
-    def __handle_write_complete(self, write_count, fail_count, runtime):
-        self.t.quit()
-        self.status_bar.showMessage(
-            '{} item(s) saved successfully, {} failed ({:.2f}s)'.format(write_count, fail_count, runtime))
+    def __handle_selection_change(self, selection):
+        self.selection_label.setText('{}/{}'.format(selection, len(self.mp3_files)))
     # endregion
 
     # region Script
     def __execute(self, items):
-        if items and not self.is_running:
-            self.status_bar.showMessage('Collecting data')
-            self.start = time()
-            self.is_running = True
-            self.tasks = len(items)
-            self.save_button.setDisabled(True)
-            self.progress_bar.setValue(0)
-            self.progress_bar.setRange(0, self.tasks * thread.CollectorThread.MAX)
+        if items:
+            if not self.is_collecting:
+                self.status_bar.showMessage('Collecting data')
+                self.start = time()
+                self.is_collecting = True
+                self.tasks = len(items)
+                self.save_button.setDisabled(True)
+                self.progress_bar.setValue(0)
+                self.progress_bar.setRange(0, self.tasks * thread.CollectorThread.MAX)
 
-            for t in self.threads:
-                if not t.isRunning():
-                    t.q = self.q
-                    t.collected.connect(self.__finish_collect)
-                    t.status_update.connect(self.__handle_status_update)
-                    t.global_progress_update.connect(self.__handle_progress_update)
-                    t.daemon = True
-                    t.start()
+                for t in self.threads:
+                    if not t.isRunning():
+                        t.q = self.q
+                        t.collected.connect(self.__finish_collect)
+                        t.status_update.connect(self.__handle_status_update)
+                        t.global_progress_update.connect(self.__handle_progress_update)
+                        t.daemon = True
+                        t.start()
 
-            for item in items:
-                self.q.put(item)
+                for item in items:
+                    self.q.put(item)
+            else:
+                self.status_bar.showMessage('Collector is still running, please wait')
+        else:
+            self.status_bar.showMessage('No data to collect...')
 
     def __finish_collect(self, item, collected):
         self.tasks -= 1
         if collected:
             item.update()
         if self.tasks == 0:
-            self.is_running = False
+            self.is_collecting = False
             self.save_button.setDisabled(False)
             self.status_bar.showMessage('Done in {:.2f}s'.format(time() - self.start))
 
     def __save(self, items):
-        if items and not self.is_running and not self.t.isRunning():
-            self.progress_bar.setValue(0)
-            self.progress_bar.setRange(0, len(items))
-            self.writer.items = [i.model for i in items]
-            self.t.start()
+        if items:
+            if not self.is_collecting:
+                write_count = 0
+                total_count = len(items)
+                d = dialog.ProgressDialog(parent=self, title='Saving', range_=total_count)
+                for i in items:
+                    if d.wasCanceled():
+                        break
+                    m = i.model
+                    d.setLabelText(os.path.basename(m.file))
+                    if m.save():
+                        write_count += 1
+                    d.increment()
+                self.status_bar.showMessage('{} item(s) saved successfully, {} failed'.format(write_count, total_count - write_count))
+            else:
+                self.status_bar.showMessage('Collector is still running, please wait')
+        else:
+            self.status_bar.showMessage('No items to save...')
     # endregion
 
     pass

@@ -2,8 +2,6 @@ from PyQt5 import QtWidgets, QtCore
 
 
 class ProgressDialog(QtWidgets.QProgressDialog):
-    # TODO handle cancel
-
     def __init__(self, title, range_=0, parent=None):
         super().__init__(parent)
         self.__layout()
@@ -12,6 +10,7 @@ class ProgressDialog(QtWidgets.QProgressDialog):
         self.setWindowTitle(title)
         self.setWindowModality(QtCore.Qt.WindowModal)
         self.setWindowFlags(self.windowFlags() & ~QtCore.Qt.WindowContextHelpButtonHint)
+        self.setCancelButton(None)
 
     # region Setup
     def __layout(self):
