@@ -3,8 +3,9 @@ import glob
 import base64
 import re
 import difflib
+from PyQt5 import QtCore
 
-from PyQt5 import QtWidgets, QtGui, QtCore
+from PyQt5 import QtWidgets, QtGui
 
 
 # Image
@@ -22,9 +23,18 @@ def byte_image(data):
         return img
 
 
-def base64_byte_image(data):
+def base64_encoded_bytes(data):
     return bytes(base64.b64encode(data)).decode()
 
+
+def image_to_bytes(img):
+    if img:
+        arr = QtCore.QByteArray()
+        buf = QtCore.QBuffer(arr)
+        buf.open(QtCore.QIODevice.WriteOnly)
+        img.save(buf, 'PNG')
+        print(arr)
+        return arr.data()
 
 # File
 def file_exists(file):

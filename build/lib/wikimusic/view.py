@@ -1,24 +1,11 @@
 import os
-from PyQt5 import QtGui, QtWidgets, QtCore
-from wikimusic import util, async
+from PyQt5 import QtGui
+
+from PyQt5 import QtWidgets, QtCore
+from wikimusic import model, util
 
 
-class VerticalLabel(QtWidgets.QLabel):
-    def __init__(self, parent=None):
-        super().__init__(parent)
-        self.setAlignment(QtCore.Qt.AlignTop)
-        self.setTextFormat(QtCore.Qt.RichText)
-        self.setStyleSheet('color: gray;')
-
-    @property
-    def lines(self):
-        return self.text()
-
-    @lines.setter
-    def lines(self, line):
-        self.setText(line + '<br>')
-
-
+'''
 class FloatingLineEdit(QtWidgets.QDialog):
     editingFinished = QtCore.pyqtSignal()
 
@@ -51,6 +38,23 @@ class FloatingLineEdit(QtWidgets.QDialog):
     @text.setter
     def text(self, value):
         self.line_edit.setText(value)
+'''
+
+
+class LabelList(QtWidgets.QLabel):
+    def __init__(self, parent=None):
+        super().__init__(parent)
+        self.setAlignment(QtCore.Qt.AlignTop)
+        self.setTextFormat(QtCore.Qt.RichText)
+        self.setStyleSheet('color: gray;')
+
+    @property
+    def lines(self):
+        return self.text()
+
+    @lines.setter
+    def lines(self, line):
+        self.setText(line + '<br>')
 
 
 class CoverLabel(QtWidgets.QLabel):
@@ -59,57 +63,55 @@ class CoverLabel(QtWidgets.QLabel):
     def __init__(self, size, cover=None, parent=None):
         super().__init__(parent)
         self.__cover = cover
-        self.__menu()
         self.__setup()
         self.setFixedSize(size, size)
         self.setScaledContents(True)
+        self.setAcceptDrops(True)
         self.setCover(cover)
 
-    def __menu(self):
-        self.menu = QtWidgets.QMenu(self)
-        self.menu.addAction('New', lambda: self.floating_line_edit.show())
-        self.menu.addAction('Clear', lambda: self.__handle_set_cover(None))
-
+    # region Setup
     def __setup(self):
-        self.t = QtCore.QThread()
-        self.downloader = async.Downloader()
-        self.t.started.connect(self.downloader.download)
-        self.downloader.moveToThread(self.t)
-        self.downloader.finished.connect(self.__handle_download_complete)
+        # Context Menu
+        self.ctxmenu = QtWidgets.QMenu(self)
+        self.paste_action = self.ctxmenu.addAction('Paste Image', self.__handle_paste_image)
+        self.clear_action = self.ctxmenu.addAction('Clear', self.__reset_cover)
+    # endregion
 
-        self.floating_line_edit = FloatingLineEdit(parent=self)
-        self.floating_line_edit.editingFinished.connect(self.__handle_download_image)
-
+    # region Event Overrides
     def contextMenuEvent(self, event):
-        self.menu.exec_(self.mapToGlobal(event.pos()))
+        self.paste_action.setEnabled(QtWidgets.QApplication.clipboard().mimeData().hasImage())
+        self.clear_action.setEnabled(bool(self.__cover))
+        self.ctxmenu.exec_(self.mapToGlobal(event.pos()))
+    # endregion
 
+    # region Getter Setter
     def setCover(self, cover):
         self.__cover = cover
         if cover:
             self.setPixmap(util.byte_image(cover.data))
-            self.setToolTip('<img src="data:image/png;base64,{}">'.format(util.base64_byte_image(cover.data)))
+            self.setToolTip('<img src="data:image/png;base64,{}">'.format(util.base64_encoded_bytes(cover.data)))
         else:
             self.setPixmap(util.image('cover.png'))
 
     def cover(self):
         return self.__cover
+    # endregion
 
-    def __handle_download_image(self):
-        self.downloader.url = self.floating_line_edit.text
-        if not self.t.isRunning():
-            self.t.start()
-        else:
-            print('Running')
-
-    def __handle_download_complete(self):
-        self.t.quit()
-        cover = self.downloader.cover
-        if cover:
-            self.__handle_set_cover(cover)
-
-    def __handle_set_cover(self, cover):
+    # region Helper
+    def __reset_cover(self, cover=None):
         self.setCover(cover)
         self.editingFinished.emit()
+    # endregion
+
+    # region Handlers
+    def __handle_paste_image(self):
+        clipboard = QtWidgets.QApplication.clipboard()
+        if clipboard.mimeData().hasImage():
+            data = util.image_to_bytes(clipboard.image())
+            if data:
+                self.__reset_cover(model.Cover(data, 'image/png'))
+    # endregion
+    pass
 
 
 class MetaMusicListView(QtWidgets.QScrollArea):
@@ -243,7 +245,7 @@ class MetaMusicListItem(QtWidgets.QWidget):
         grid_layout.addWidget(self.genre_input, 3, 1, 1, 2)
 
         # Status
-        self.status_label = VerticalLabel(self)
+        self.status_label = LabelList(self)
         self.status_label.setFixedSize(75, 100)
         grid_layout.addWidget(self.status_label, 0, 3, 4, 1)
 
